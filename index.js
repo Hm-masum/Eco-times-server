@@ -21,7 +21,14 @@ const client = new MongoClient(uri, {
 
 async function run() {
   try {
-    const newsCollection=client.db('ecoTimes').collection('news')
+    const newsCollection=client.db('ecoTimes').collection('articles')
+
+
+    app.post('/article',async(req,res)=>{
+      const articleData=req.body;
+      const result = await newsCollection.insertOne(articleData)
+      res.send(result)
+    })
   
 
 
