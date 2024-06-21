@@ -23,6 +23,7 @@ async function run() {
   try {
     const newsCollection=client.db('ecoTimes').collection('articles')
     const usersCollection=client.db('ecoTimes').collection('users')
+    const publishersCollection=client.db('ecoTimes').collection('publishers')
    
 
      // jwt related api
@@ -49,6 +50,8 @@ async function run() {
     }
 
 
+
+
     // Article related db
     app.post('/article',async(req,res)=>{
       const articleData=req.body;
@@ -65,6 +68,38 @@ async function run() {
       const id= req.params.id;
       const query={_id: new ObjectId(id)}
       const result=await newsCollection.findOne(query)
+      res.send(result)
+    })
+
+    app.delete('/article/:id',async(req,res)=>{
+      const id= req.params.id;
+      const query={_id: new ObjectId(id)}
+      const result= await newsCollection.deleteOne(query)
+      res.send(result)
+    })
+
+    app.patch('/article/approve/:id', async(req,res)=>{
+      const id= req.params.id;
+      const filter={_id: new ObjectId(id)}
+      const updatedDoc={
+       $set:{
+          status: 'approved'
+       }
+      }
+      const result = await newsCollection.updateOne(filter,updatedDoc)
+      res.send(result)
+    })
+
+    app.patch('/article/premium/:id', async(req,res)=>{
+      const id= req.params.id;
+      const filter={_id: new ObjectId(id)}
+      const updatedDoc={
+       $set:{
+          status: 'premium',
+          isPremium:'yes'
+       }
+      }
+      const result = await newsCollection.updateOne(filter,updatedDoc)
       res.send(result)
     })
 
@@ -96,7 +131,7 @@ async function run() {
       }
       const result = await usersCollection.updateOne(filter,updatedDoc)
       res.send(result)
-   })
+    })
   
 
 
