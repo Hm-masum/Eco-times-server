@@ -103,6 +103,13 @@ async function run() {
       res.send(result)
     })
 
+    app.get('/my-article/:email',async(req,res)=>{
+      const email=req.params.email;
+      let query={authorEmail:email}
+      const result = await newsCollection.find(query).toArray()
+      res.send(result)
+    })
+
     // user related db
     app.post('/users',async(req,res)=>{
       const user=req.body
