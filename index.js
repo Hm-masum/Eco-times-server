@@ -22,6 +22,7 @@ const client = new MongoClient(uri, {
 async function run() {
   try {
     const newsCollection=client.db('ecoTimes').collection('articles')
+    const usersCollection=client.db('ecoTimes').collection('users')
    
 
      // jwt related api
@@ -64,6 +65,19 @@ async function run() {
       const id= req.params.id;
       const query={_id: new ObjectId(id)}
       const result=await newsCollection.findOne(query)
+      res.send(result)
+    })
+
+    // user related db
+    app.post('/users',async(req,res)=>{
+      const user=req.body
+      const query={email:user.email}
+      const existingUser= await usersCollection.findOne(query)
+   
+      if(existingUser){
+        return res.send ({message: 'user already exists', insertedId:null})
+      }
+      const result=await usersCollection.insertOne(user)
       res.send(result)
     })
   
