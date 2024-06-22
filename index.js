@@ -4,9 +4,12 @@ require('dotenv').config()
 const jwt = require('jsonwebtoken');
 const cors = require('cors')
 const { MongoClient, ServerApiVersion, ObjectId } = require('mongodb');
+const stripe = require("stripe")(process.env.STRIPE_SECRET_KEY)
 const port = process.env.PORT || 5000
 
-app.use(cors())
+app.use(cors({
+  origin:["http://localhost:5173","https://eco-times.web.app","https://eco-times.firebaseapp.com"]
+}))
 app.use(express.json())
 
 
@@ -49,6 +52,18 @@ async function run() {
       })
     }
 
+    const verifyAdmin= async(req,res,next) =>{
+      const email = req.decoded.email;
+      const query= { email:email}
+      const user = await userCollection.findOne(query)
+      const isAdmin= user?.role === 'admin'
+
+      if(!isAdmin){
+        return res.status(403).send({message:'forbidden access'})
+      }
+      next()
+    }
+
 
 
 
@@ -71,14 +86,14 @@ async function run() {
       res.send(result)
     })
 
-    app.delete('/article/:id',async(req,res)=>{
+    app.delete('/article/:id',verifyToken,async(req,res)=>{
       const id= req.params.id;
       const query={_id: new ObjectId(id)}
       const result= await newsCollection.deleteOne(query)
       res.send(result)
     })
 
-    app.patch('/article/approve/:id', async(req,res)=>{
+    app.patch('/article/approve/:id',verifyToken, async(req,res)=>{
       const id= req.params.id;
       const filter={_id: new ObjectId(id)}
       const updatedDoc={
@@ -90,7 +105,7 @@ async function run() {
       res.send(result)
     })
 
-    app.patch('/article/premium/:id', async(req,res)=>{
+    app.patch('/article/premium/:id',verifyToken, async(req,res)=>{
       const id= req.params.id;
       const filter={_id: new ObjectId(id)}
       const updatedDoc={
@@ -103,14 +118,14 @@ async function run() {
       res.send(result)
     })
 
-    app.get('/my-article/:email',async(req,res)=>{
+    app.get('/my-article/:email',verifyToken,async(req,res)=>{
       const email=req.params.email;
       let query={authorEmail:email}
       const result = await newsCollection.find(query).toArray()
       res.send(result)
     })
 
-    app.put('/update-article/:id',async(req,res)=>{
+    app.put('/update-article/:id',verifyToken,async(req,res)=>{
       const id=req.params.id;
       const query={_id:new ObjectId(id)}
       const articleData=req.body
@@ -121,6 +136,17 @@ async function run() {
         },
       }
       const result = await newsCollection.updateOne(query,updateDoc,options)
+      res.send(result)
+    })
+
+    app.get('/all-articles',async(req,res)=>{
+      const search=req.query.search;
+      let query={
+        title:{ $regex:search, $options: 'i'}
+      }
+      
+      const cursor=newsCollection.find({...query});
+      const result = await cursor.toArray();
       res.send(result)
     })
 
@@ -142,7 +168,7 @@ async function run() {
       res.send(result)
     })
 
-    app.patch('/users/admin/:id', async(req,res)=>{
+    app.patch('/users/admin/:id',verifyToken, async(req,res)=>{
       const id= req.params.id;
       const filter={_id: new ObjectId(id)}
       const updatedDoc={
@@ -153,13 +179,55 @@ async function run() {
       const result = await usersCollection.updateOne(filter,updatedDoc)
       res.send(result)
     })
-  
+
+    app.get('/user/:email',verifyToken, async (req, res) => {
+      const email = req.params.email
+      const result = await usersCollection.findOne({ email })
+      res.send(result)
+    })
+
+    //Publisher related db
+    app.post('/publisher',async(req,res)=>{
+      const publisherData=req.body;
+      const result = await publishersCollection.insertOne(publisherData)
+      res.send(result)
+    })
+
+    app.get('/publisher',async(req,res)=>{
+      const result=await publishersCollection.find().toArray()
+      res.send(result)
+    })
+
+    // Payment related db
+    app.post('/create-payment-intent', async (req, res) => {
+      const { price } = req.body;
+      const amount = parseInt(price*100)
+    
+      const paymentIntent = await stripe.paymentIntents.create({
+        amount: amount,
+        currency: "usd",
+        payment_method_types:['card']
+      });
+    
+      res.send({
+        clientSecret: paymentIntent.client_secret,
+      });
+    });
+
+    app.patch('/users/premium/:email',verifyToken, async(req,res)=>{
+      const email= req.params.email;
+      let query={email}
+
+      const updatedDoc={
+       $set:{
+          role: 'Premium user',
+       }
+      }
+      const result = await usersCollection.updateOne(query,updatedDoc)
+      res.send(result)
+    })
 
 
-
-
-    await client.db("admin").command({ ping: 1 });
-    console.log("Pinged your deployment. You successfully connected to MongoDB!");
   } finally {
 
   }
