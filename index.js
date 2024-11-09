@@ -64,9 +64,6 @@ async function run() {
       next()
     }
 
-
-
-
     // Article related db
     app.post('/article',async(req,res)=>{
       const articleData=req.body;
@@ -86,35 +83,27 @@ async function run() {
       res.send(result)
     })
 
-    app.delete('/article/:id',verifyToken,async(req,res)=>{
-      const id= req.params.id;
-      const query={_id: new ObjectId(id)}
-      const result= await newsCollection.deleteOne(query)
-      res.send(result)
-    })
+    app.get('/all-articles',async(req,res)=>{
+      const search=req.query.search;
+      const publisher = req.query.publisher;
+      const tags = req.query.tags;
+      let query={}
+      console.log(tags)
 
-    app.patch('/article/approve/:id',verifyToken, async(req,res)=>{
-      const id= req.params.id;
-      const filter={_id: new ObjectId(id)}
-      const updatedDoc={
-       $set:{
-          status: 'approved'
-       }
+      if(search){
+        query.title ={$regex:search,$options:'i'}
       }
-      const result = await newsCollection.updateOne(filter,updatedDoc)
-      res.send(result)
-    })
 
-    app.patch('/article/premium/:id',verifyToken, async(req,res)=>{
-      const id= req.params.id;
-      const filter={_id: new ObjectId(id)}
-      const updatedDoc={
-       $set:{
-          status: 'premium',
-          isPremium:'yes'
-       }
+      if(publisher && publisher !== "all"){
+        query.publisher = {$regex:publisher,$options:'i'};
       }
-      const result = await newsCollection.updateOne(filter,updatedDoc)
+
+      if (tags) {
+        query.tags = { $in: tags.split(",") }; 
+      }
+      
+      const cursor=newsCollection.find(query);
+      const result = await cursor.toArray();
       res.send(result)
     })
 
@@ -139,14 +128,28 @@ async function run() {
       res.send(result)
     })
 
-    app.get('/all-articles',async(req,res)=>{
-      const search=req.query.search;
-      let query={
-        title:{ $regex:search, $options: 'i'}
+    app.patch('/article/approve/:id',verifyToken, async(req,res)=>{
+      const id= req.params.id;
+      const filter={_id: new ObjectId(id)}
+      const updatedDoc={
+       $set:{
+          status: 'approved'
+       }
       }
-      
-      const cursor=newsCollection.find({...query});
-      const result = await cursor.toArray();
+      const result = await newsCollection.updateOne(filter,updatedDoc)
+      res.send(result)
+    })
+
+    app.patch('/article/premium/:id',verifyToken, async(req,res)=>{
+      const id= req.params.id;
+      const filter={_id: new ObjectId(id)}
+      const updatedDoc={
+       $set:{
+          status: 'approved',
+          isPremium:'yes'
+       }
+      }
+      const result = await newsCollection.updateOne(filter,updatedDoc)
       res.send(result)
     })
 
@@ -163,6 +166,34 @@ async function run() {
       const result = await newsCollection.updateOne(filter,updatedDoc)
       res.send(result)
     })
+
+    app.delete('/article/:id',verifyToken,async(req,res)=>{
+      const id= req.params.id;
+      const query={_id: new ObjectId(id)}
+      const result= await newsCollection.deleteOne(query)
+      res.send(result)
+    })
+
+    app.patch('/article/view/:id', async(req,res)=>{
+      const id= req.params;
+      const filter={_id: new ObjectId(id)};
+
+      const article=await newsCollection.findOne(filter);
+      
+      let viewsUpdate = article.views + 1;
+
+      const result = await newsCollection.updateOne(filter,{
+        $set:{views: viewsUpdate}
+      })
+      res.send(result)
+
+    })
+
+    app.get('/article-trending',async(req,res)=>{
+      const result=await newsCollection.find({status: "approved"}).sort({views:-1}).limit(3).toArray()
+      res.send(result)
+    })
+
 
     // user related db
     app.post('/users',async(req,res)=>{
@@ -194,9 +225,30 @@ async function run() {
       res.send(result)
     })
 
+    app.patch('/update-profile/:email',verifyToken,async(req,res)=>{
+      const email=req.params.email;
+      const userData=req.body;
+      const filter = { email: email };
+      const updateDoc = {
+        $set:{
+          name: userData.name,
+          image_url: userData.image_url
+        }
+      }
+      const result = await usersCollection.updateOne(filter,updateDoc)
+      res.send(result)
+    })
+
     app.get('/user/:email',verifyToken, async (req, res) => {
       const email = req.params.email
       const result = await usersCollection.findOne({ email })
+      res.send(result)
+    })
+
+    app.delete('/user/:id',verifyToken,async(req,res)=>{
+      const id= req.params.id;
+      const query={_id: new ObjectId(id)}
+      const result= await usersCollection.deleteOne(query)
       res.send(result)
     })
 
@@ -230,17 +282,71 @@ async function run() {
 
     app.patch('/users/premium/:email',verifyToken, async(req,res)=>{
       const email= req.params.email;
+      const {plan}= req.body
       let query={email}
+
+      const durations = {
+        '1': 1 * 60 * 1000,    // 1 minute in milliseconds
+        '5': 5 * 24 * 60 * 60 * 1000,  // 5 days in milliseconds
+        '10': 10 * 24 * 60 * 60 * 1000  // 10 days in milliseconds
+     };
+
+      const subscriptionEnd = new Date(Date.now() + durations[plan]);
+      console.log(subscriptionEnd)
 
       const updatedDoc={
        $set:{
           role: 'Premium user',
+          subscriptionEnd: subscriptionEnd,
        }
       }
       const result = await usersCollection.updateOne(query,updatedDoc)
       res.send(result)
     })
 
+    // stats or analytics   
+
+    app.get('/publisher-stats',async(req,res)=>{
+      const result= await newsCollection.aggregate([
+        {
+          $group: {
+            _id:"$publisher",
+            quantity: { $sum: 1 }
+          }
+        },
+        {
+          $project: {
+            _id: 0,
+            publisher: "$_id",
+            quantity: 1 
+          }
+        }
+      ]).toArray()
+      res.send(result)
+    })
+
+    app.get('/tags-stats',async(req,res)=>{
+      const result= await newsCollection.aggregate([
+        {
+          $unwind: "$tags"
+
+        },
+        {
+          $group: {
+            _id:"$tags",
+            quantity: { $sum: 1 }
+          }
+        },
+        {
+          $project: {
+            _id: 0,
+            tags: "$_id",
+            quantity: 1 
+          }
+        }
+      ]).toArray()
+      res.send(result)
+    })
 
   } finally {
 
